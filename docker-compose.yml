@@ -1,5 +1,8 @@
 services:
   sap2nmos:
+    # Published by CI on every push to main; `docker compose up -d --build`
+    # builds locally instead, `docker compose pull` fetches the CI image.
+    image: gemini2350/sap-2-nmos:latest
     build: .
     container_name: sap2nmos
     # Host networking is required: the SAP listener needs the host's multicast

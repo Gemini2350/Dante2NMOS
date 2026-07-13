@@ -1,5 +1,8 @@
 # SAP-2-NMOS
 
+[![Docker](https://github.com/Gemini2350/SAP-2-NMOS/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Gemini2350/SAP-2-NMOS/actions/workflows/docker-publish.yml)
+[![Docker Hub](https://img.shields.io/docker/v/gemini2350/sap-2-nmos?label=docker%20hub)](https://hub.docker.com/r/gemini2350/sap-2-nmos)
+
 Desktop tool (Windows / macOS) that listens to **SAP/SDP announcements** (AES67 style,
 239.255.255.255:9875) and registers the discovered streams as **senders in an NMOS IS-04
 registry** — including a GUI that shows every discovered stream and lets you add streams
@@ -71,8 +74,11 @@ For a native window install the WebKit2GTK bindings first
 
 ## Docker
 
+CI publishes `gemini2350/sap-2-nmos` (amd64 + arm64) to Docker Hub on every push to main:
+
 ```sh
-docker compose up -d --build
+docker compose pull && docker compose up -d    # use the CI image
+docker compose up -d --build                   # or build locally
 # UI: http://<host>:8085/ui/
 ```
 
