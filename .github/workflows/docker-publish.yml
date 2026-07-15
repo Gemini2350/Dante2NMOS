@@ -35,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-docker.txt pytest
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
 
   build-and-push:
     runs-on: ubuntu-latest
