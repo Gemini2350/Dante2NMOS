@@ -176,10 +176,13 @@ function renderDevices(dante) {
 
   for (const d of dante.devices) {
     const tr = document.createElement("tr");
+    const rate = d.sample_rate ? (d.sample_rate / 1000) + " kHz" : "";
     tr.innerHTML = `
       <td class="name">${esc(d.name)}</td>
       <td class="mono">${esc(d.ip)}</td>
+      <td>${esc(d.model)}</td>
       <td>${d.aes67_enabled ? badge("reg", "yes") : badge("stale", "no")}</td>
+      <td class="mono">${rate}</td>
       <td class="mono">${d.rx_channels}</td>
       <td class="mono">${d.tx_channels}</td>
       <td><button class="icon" data-mkrx="${esc(d.ip)}" data-mkname="${esc(d.name)}"

@@ -352,6 +352,7 @@ class Is12Server:
     # ------------------------------------------------------------ websocket
 
     async def _handler(self, ws):
+        import websockets
         self._clients[ws] = set()
         try:
             async for raw in ws:
@@ -377,6 +378,8 @@ class Is12Server:
                         "protocolVersion": "1.0",
                         "messageType": MT_SUBSCRIPTION_RESPONSE,
                         "subscriptions": sorted(subs)}))
+        except websockets.exceptions.ConnectionClosed:
+            pass  # normal client disconnect
         finally:
             self._clients.pop(ws, None)
 
