@@ -155,3 +155,22 @@ Antwortlängen 148 und 156.
 
 Builder/Parser: `dante.build_set_aes67_prefix`, `read_aes67_prefix`,
 `set_aes67_prefix`, `parse_aes67_prefix`. Schreiben ist hinter ARMED gated.
+
+## AES67 Multicast TX Flow anlegen — bestätigt via tx_ch.pcap (2026-07-16)
+
+Opcode `0x2601` (CREATE_TX_FLOW, AES67). Kontrollierte Captures (AVIO USB,
+alle mit Multicast 239.69.236.153:5004): CH1, CH2, CH1+2.
+
+**1-Kanal-Flow (112 B):** Quell-TX-Kanal @96:98, Port @106:108, Multicast @108:112.
+CH1 und CH2 unterscheiden sich in genau einem Byte (@97) — alle Zähl-/Längenfelder
+sind identisch.
+
+**2-Kanal-Flow (116 B):** Kanal-IDs @96:98 und @98:100, Port @110:112,
+Multicast @112:116. Die internen Zählfelder (Länge @89, @22, 0a15, 040b, 0507)
+haengen nur von der Kanal-ANZAHL ab, nicht von den Kanal-Werten — daher genuegt
+das Patchen von Kanal-IDs + Multicast + Port (byte-exakt getestet).
+
+Builder: `dante.build_create_tx_flow(channels, multicast, port)` /
+`create_tx_flow(...)`. >2 Kanaele brauchen weitere Captures. Delete-Flow (0x2602)
+noch offen. Der angelegte Flow wird vom Geraet per SAP announced und taucht damit
+automatisch als NMOS-Sender auf.

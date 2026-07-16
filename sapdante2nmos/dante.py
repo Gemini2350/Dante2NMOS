@@ -134,6 +134,61 @@ def set_aes67_prefix(device_ip: str, prefix: int, timeout: float = 2.0):
     return bool(resp and resp[6:8].hex() == "1101")
 
 
+# ---------------------------------------------------------------------------
+# AES67 multicast TX flow creation (0x2601) — RE'd from tx_ch.pcap (2026-07-16,
+# Dante Controller creating flows on an AVIO USB). Controlled captures with the
+# same multicast (239.69.236.153:5004): CH1, CH2 and CH1+2.
+#   1-channel flow (112 B): source TX channel @96:98, port @106:108, mcast @108:112
+#   2-channel flow (116 B): channel ids @96:98 and @98:100, port @110:112,
+#                           mcast @112:116
+# The internal count/length fields differ between the 1- and 2-channel templates
+# but depend only on the channel COUNT (CH1 and CH2 captures are byte-identical
+# except @97), so patching channel ids + mcast + port is byte-exact.
+# ---------------------------------------------------------------------------
+
+TPL_2601_1CH = bytes.fromhex(
+    "2809007001252601000000000000000001010014162a0000000000030002000000000006000000000000000000000000000000000000000000000000000000000a14000000000000000300000000000000000000040a0100006800000406000100010000020000300802138cef45ec99"
+)
+TPL_2601_2CH = bytes.fromhex(
+    "2809007401372601000000000000000001010014162b0000000000030002000000000006000000000000000000000000000000000000000000000000000000000a15000000000000000300000000000000000000040b0100006c0000050700020001000200000200003000000802138cef45ec99"
+)
+assert len(TPL_2601_1CH) == 112 and len(TPL_2601_2CH) == 116
+
+
+def build_create_tx_flow(channels, multicast_ip: str, rtp_port: int = 5004,
+                         txid: int = 0x0125) -> bytes:
+    """0x2601: legt einen AES67-Multicast-TX-Flow an (1 oder 2 Quellkanaele).
+
+    multicast_ip muss im AES67-Bereich des Geraets liegen (239.<prefix>.x.x).
+    """
+    chans = [int(c) for c in channels]
+    if not chans or len(chans) > 2:
+        raise ValueError("nur 1 oder 2 Kanaele werden unterstuetzt")
+    if any(not 1 <= c <= 0xFFFF for c in chans):
+        raise ValueError("Kanalnummern muessen 1..65535 sein")
+    if len(chans) == 1:
+        p = bytearray(TPL_2601_1CH)
+        p[96:98] = chans[0].to_bytes(2, "big")
+        p[106:108] = rtp_port.to_bytes(2, "big")
+        p[108:112] = socket.inet_aton(multicast_ip)
+    else:
+        p = bytearray(TPL_2601_2CH)
+        p[96:98] = chans[0].to_bytes(2, "big")
+        p[98:100] = chans[1].to_bytes(2, "big")
+        p[110:112] = rtp_port.to_bytes(2, "big")
+        p[112:116] = socket.inet_aton(multicast_ip)
+    p[O_TXID:O_TXID + 2] = txid.to_bytes(2, "big")
+    return bytes(p)
+
+
+def create_tx_flow(device_ip: str, channels, multicast_ip: str,
+                   rtp_port: int = 5004, timeout: float = 2.0):
+    """Legt einen Multicast-TX-Flow an. Gibt True bei ACK zurueck."""
+    pkt = build_create_tx_flow(channels, multicast_ip, rtp_port)
+    resp = send(device_ip, pkt, timeout=timeout)
+    return bool(resp and resp[6:8].hex() in ("2601", "2801"))
+
+
 def send(device_ip: str, pkt: bytes, timeout: float = 2.0):
     """Sendet ein Kommando an das Geraet (UDP, Port 4440) und wartet auf Antwort."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

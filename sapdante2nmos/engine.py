@@ -458,6 +458,31 @@ class Engine:
         threading.Thread(target=self.receivers.refresh_devices, daemon=True).start()
         return ok, ("device acknowledged" if ok else "no acknowledgement from device")
 
+    def create_tx_flow(self, ip, channels, multicast, port=5004):
+        """Create an AES67 multicast TX flow on a device (guarded by ARMED).
+
+        The device announces the flow via SAP, so it appears as an NMOS sender
+        through the normal SAP path — no separate registration needed here.
+        """
+        if not channels or len(channels) > 2:
+            return False, "select 1 or 2 channels"
+        try:
+            import socket as _s
+            _s.inet_aton(multicast)
+        except OSError:
+            return False, "invalid multicast address"
+        if not self.config["apply_mode"]:
+            return False, "DRY-RUN: enable ARMED in settings to write to devices"
+        from . import dante
+        try:
+            ok = dante.create_tx_flow(ip, channels, multicast, port)
+        except (OSError, ValueError) as e:
+            return False, str(e)
+        self._log(f"Create TX flow on {ip}: ch{'+'.join(map(str, channels))} "
+                  f"-> {multicast}:{port} ({'ACK' if ok else 'no ACK'})")
+        return ok, ("device acknowledged — the flow will appear as a sender via SAP"
+                    if ok else "no acknowledgement from device")
+
     def _on_receiver_status(self, nmos_id):
         """A receiver's connection changed — update its IS-04 subscription
         (sender_id / active) in the registry so controllers see the link."""

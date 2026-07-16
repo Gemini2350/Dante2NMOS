@@ -147,6 +147,15 @@ def make_server(engine, config):
                     engine.receivers.set_auto_prefix((body.get("ip") or "").strip(),
                                                      bool(body.get("enabled")))
                     return self.send_json({"ok": True})
+                if path == "/api/devices/tx":
+                    body = json.loads(self.read_body() or b"{}")
+                    ip = (body.get("ip") or "").strip()
+                    channels = [int(c) for c in (body.get("channels") or [])]
+                    multicast = (body.get("multicast") or "").strip()
+                    port = int(body.get("port") or 5004)
+                    ok, msg = engine.create_tx_flow(ip, channels, multicast, port)
+                    return self.send_json({"ok": ok, "message": msg},
+                                          200 if ok else 400)
             except ValueError as e:
                 return self.send_json({"error": str(e)}, 400)
             return self.send_json({"error": "not found"}, 404)

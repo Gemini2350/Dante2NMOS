@@ -109,6 +109,36 @@
   </div>
 </div>
 
+<!-- Create TX flow modal -->
+<div class="modal-backdrop" id="modal-tx" hidden>
+  <div class="modal">
+    <h2>Create multicast TX flow</h2>
+    <p class="hint">Creates an AES67 multicast flow on <b id="tx-devname"></b> that
+    transmits the selected TX channels. The device announces it via SAP, so it
+    shows up as an NMOS sender. Requires <b>ARMED</b> mode. The multicast must be
+    in the device's AES67 range (239.&lt;prefix&gt;.x.x).</p>
+    <div class="grid2">
+      <label>TX channel 1
+        <input type="number" id="tx-ch1" value="1" min="1">
+      </label>
+      <label>TX channel 2 <small>(optional, 0 = mono)</small>
+        <input type="number" id="tx-ch2" value="2" min="0">
+      </label>
+      <label>Multicast address
+        <input type="text" id="tx-mcast" placeholder="239.69.1.1">
+      </label>
+      <label>RTP port
+        <input type="number" id="tx-port" value="5004">
+      </label>
+    </div>
+    <div class="error" id="tx-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" data-close>Cancel</button>
+      <button class="primary" id="btn-tx-confirm">Create flow</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div class="modal-backdrop" id="modal-settings" hidden>
   <div class="modal">

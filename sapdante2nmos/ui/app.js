@@ -74,6 +74,7 @@ function renderDeviceCentric(streams, dante) {
 }
 
 function buildDeviceCentric(streams, devices, receivers) {
+  window._lastDevices = devices;
   const list = $("device-list");
   list.innerHTML = "";
 
@@ -322,6 +323,49 @@ $("btn-add-rx-confirm").onclick = async () => {
   refresh();
 };
 
+// ---------------------------------------------------------------- create TX flow
+
+let txDeviceIp = "";
+
+function openCreateTx(ip, name) {
+  txDeviceIp = ip;
+  $("tx-devname").textContent = `${name} (${ip})`;
+  $("tx-ch1").value = 1;
+  $("tx-ch2").value = 2;
+  $("tx-port").value = 5004;
+  // prefill multicast from the device's prefix if known
+  const dev = (window._lastDevices || []).find((x) => x.ip === ip);
+  $("tx-mcast").value = dev && dev.mcast_prefix
+    ? `239.${dev.mcast_prefix}.1.1` : "239.69.1.1";
+  $("tx-error").textContent = "";
+  openModal("modal-tx");
+}
+
+$("btn-tx-confirm").onclick = async () => {
+  const ch1 = parseInt($("tx-ch1").value, 10);
+  const ch2 = parseInt($("tx-ch2").value, 10);
+  const channels = [ch1];
+  if (ch2 > 0) channels.push(ch2);
+  const body = {
+    ip: txDeviceIp,
+    channels,
+    multicast: $("tx-mcast").value.trim(),
+    port: parseInt($("tx-port").value, 10) || 5004,
+  };
+  const r = await fetch("/api/devices/tx", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const res = await r.json();
+  if (!r.ok) {
+    $("tx-error").textContent = res.message || "Failed to create flow.";
+    return;
+  }
+  closeModals();
+  refresh();
+};
+
 // ---------------------------------------------------------------- settings
 
 $("btn-settings").onclick = async () => {
@@ -448,10 +492,7 @@ async function handleAction(e) {
   } else if (d.mkrx) {
     openAddReceiver(d.mkrx, d.mkname);
   } else if (d.createtx) {
-    alert("Creating a multicast TX flow on " + d.txname + " (" + d.createtx +
-      ") is not wired up yet — the Dante 'create flow' command still needs to " +
-      "be captured. Once done, this button creates the flow and it appears as " +
-      "an NMOS sender.");
+    openCreateTx(d.createtx, d.txname);
   } else if (d.autopfx) {
     await fetch("/api/devices/auto_prefix", {
       method: "POST", headers: { "Content-Type": "application/json" },

@@ -71,6 +71,30 @@ def test_aes67_prefix_write_matches_capture():
         "2809001400e211010000010180600010ef450000"
 
 
+def test_create_tx_flow_matches_capture():
+    # Byte-exact ground truth from tx_ch.pcap (Dante Controller, AVIO USB),
+    # all with multicast 239.69.236.153:5004.
+    mc, port = "239.69.236.153", 5004
+    assert dante.build_create_tx_flow([1], mc, port, 0x0125).hex() == \
+        dante.TPL_2601_1CH.hex()
+    ch2 = dante.build_create_tx_flow([2], mc, port, 0x012d)
+    assert ch2[96:98] == b"\x00\x02"
+    assert dante.build_create_tx_flow([1, 2], mc, port, 0x0137).hex() == \
+        dante.TPL_2601_2CH.hex()
+
+
+def test_create_tx_flow_patches_channels_and_mcast():
+    pkt = dante.build_create_tx_flow([3, 4], "239.69.10.20", 5004, 0x0140)
+    assert pkt[96:98] == b"\x00\x03" and pkt[98:100] == b"\x00\x04"
+    assert pkt[-4:] == bytes([239, 69, 10, 20])
+
+
+def test_create_tx_flow_rejects_too_many_channels():
+    import pytest
+    with pytest.raises(ValueError):
+        dante.build_create_tx_flow([1, 2, 3], "239.69.1.1")
+
+
 def test_aes67_prefix_parse():
     # Tail of a real 0x1100 response with prefix 69.
     resp = bytes.fromhex("00" * 148)[:-12] + bytes.fromhex("00000000ef450000001e8480")
