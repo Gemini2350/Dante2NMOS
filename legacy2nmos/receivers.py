@@ -1,8 +1,8 @@
 """Dante receiver side: config-backed receiver maps, IS-05 state, activation.
 
 One NMOS receiver = N Dante RX channels (default 2). On IS-05 activation the
-SDP (or transport_params) is translated into Dante control commands; whether
-they are actually sent depends on config["apply_mode"] (DRY-RUN by default).
+SDP (or transport_params) is translated into Dante control commands and sent
+to the device (the gateway always operates live).
 """
 
 import threading
@@ -146,19 +146,20 @@ class ReceiverManager:
         return st
 
     def _activate(self, rx, st):
-        apply_mode = bool(self.config["apply_mode"])
         sdp_text = (st.get("transport_file") or {}).get("data") or ""
         sdp = parse_aes67_sdp(sdp_text) if sdp_text \
             else params_to_sdp(st.get("transport_params"))
         self.log(f"IS-05 activate {rx.label}: {sdp.source_ip} -> "
-                 f"{sdp.multicast_ip}:{sdp.port} ({sdp.channels}ch) "
-                 f"[{'APPLY' if apply_mode else 'DRY-RUN'}]")
-        steps = translate(rx, sdp, apply=apply_mode)
+                 f"{sdp.multicast_ip}:{sdp.port} ({sdp.channels}ch)")
+        # The Dante device only receives an AES67 multicast whose prefix matches
+        # its configured AES67 range — so align the prefix BEFORE the mapping.
+        self._sync_prefix(rx, sdp.multicast_ip)
+        steps = translate(rx, sdp, apply=True)
         acks = [s.get("ack") for s in steps if "ack" in s]
         with self.lock:
             state = self.state[rx.nmos_id]
             state["last_result"] = steps
-            state["last_ack"] = all(acks) if apply_mode and acks else None
+            state["last_ack"] = all(acks) if acks else None
             state["last_activation"] = time.time()
             state["active"] = dict(st, master_enable=True)
             state["summary"] = {
@@ -172,17 +173,13 @@ class ReceiverManager:
                                 "activation_time": _now_ts()}
         for s in steps:
             self.log(f"  -> {s['step']}"
-                     + ("" if "ack" not in s
-                        else f" ack={s['ack']}") + ("" if apply_mode else " (dry-run)"))
-        if apply_mode:
-            self._auto_prefix(rx, sdp.multicast_ip)
+                     + ("" if "ack" not in s else f" ack={s['ack']}"))
         self._notify_status(rx.nmos_id)
 
-    def _auto_prefix(self, rx, multicast_ip):
-        """When the device follows Auto, align its AES67 prefix to the patched
-        multicast's second octet (239.<prefix>.x.x)."""
-        if rx.dante_device_ip not in self.config["auto_prefix_devices"]:
-            return
+    def _sync_prefix(self, rx, multicast_ip):
+        """Align the device's AES67 prefix to the patched multicast's second
+        octet (239.<prefix>.x.x). Always runs — the device won't receive the
+        stream otherwise."""
         try:
             prefix = int(multicast_ip.split(".")[1])
         except (IndexError, ValueError):
@@ -194,10 +191,10 @@ class ReceiverManager:
                 return
             ok = dante.set_aes67_prefix(rx.dante_device_ip, prefix)
         except OSError as e:
-            self.log(f"Auto-prefix for {rx.dante_device_ip} failed: {e}")
+            self.log(f"Prefix set for {rx.dante_device_ip} failed: {e}")
             return
-        self.log(f"Auto-prefix: {rx.dante_device_ip} -> 239.{prefix}.x.x "
-                 f"(follows {multicast_ip}) {'ACK' if ok else 'no ACK'}")
+        self.log(f"Prefix: {rx.dante_device_ip} -> 239.{prefix}.x.x "
+                 f"(matches {multicast_ip}) {'ACK' if ok else 'no ACK'}")
 
     # ------------------------------------------------------------- devices
 
@@ -317,27 +314,12 @@ class ReceiverManager:
                     "last_activation": s["last_activation"],
                     "last_result": s["last_result"],
                 })
-            auto = set(self.config["auto_prefix_devices"])
-            devices = []
-            for d in self.devices:
-                entry = asdict(d)
-                entry["auto_prefix"] = d.ip in auto
-                devices.append(entry)
+            devices = [asdict(d) for d in self.devices]
             return {
                 "receivers": receivers,
                 "devices": devices,
                 "devices_updated": self.devices_updated,
-                "apply_mode": bool(self.config["apply_mode"]),
             }
-
-    def set_auto_prefix(self, ip, enabled):
-        with self.lock:
-            devs = self.config["auto_prefix_devices"]
-            if enabled and ip not in devs:
-                devs.append(ip)
-            elif not enabled and ip in devs:
-                devs.remove(ip)
-            self.config.save()
 
 
 def _now_ts():

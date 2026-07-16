@@ -51,10 +51,10 @@ DOMAIN_PROPS = {
 }
 
 
-def _monitor_status(rx_state, apply_mode):
+def _monitor_status(rx_state):
     """Derive the four BCP-008 domain statuses from the IS-05/Dante state."""
     active = rx_state["summary"]["active"]
-    ack = rx_state["last_ack"]  # True/False after --apply, None in DRY-RUN
+    ack = rx_state["last_ack"]
 
     if not active:
         return {
@@ -65,8 +65,8 @@ def _monitor_status(rx_state, apply_mode):
         }
 
     # connectionStatus: whether our IS-05 patch reached the Dante device.
-    if not apply_mode or ack is None:
-        connection = (HEALTHY, "dry-run: no Dante commands sent")
+    if ack is None:
+        connection = (HEALTHY, "commands sent")
     elif ack:
         connection = (HEALTHY, "Dante device acknowledged all commands")
     else:
@@ -131,10 +131,10 @@ class Monitor:
         self.props[DOMAIN_PROPS["link"][0]] = LINK_ALL_UP
         self.props[DOMAIN_PROPS["sync"][0]] = SYNC_NOT_USED
 
-    def update(self, rx_state, apply_mode):
+    def update(self, rx_state):
         """Recompute statuses; returns notifications (domains first, overall last)."""
         changes = []
-        domains = _monitor_status(rx_state, apply_mode)
+        domains = _monitor_status(rx_state)
         for domain, (value, msg) in domains.items():
             status_id, msg_id, counter_id = DOMAIN_PROPS[domain]
             old = self.props[status_id]
@@ -248,7 +248,7 @@ class Is12Server:
             state = self.engine.receivers.state.get(nmos_id)
             if state is None:
                 return
-            changes = mon.update(state, bool(self.config["apply_mode"]))
+            changes = mon.update(state)
         for prop_id, value in changes:
             self._notify(mon.oid, prop_id, value)
 

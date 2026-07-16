@@ -460,11 +460,9 @@ class Engine:
         return self.receivers.remove_manual_device(ip)
 
     def set_device_prefix(self, ip, prefix):
-        """Write a device's AES67 multicast prefix (guarded by ARMED)."""
+        """Write a device's AES67 multicast prefix."""
         if not 0 <= prefix <= 255:
             return False, "prefix must be 0..255"
-        if not self.config["apply_mode"]:
-            return False, "DRY-RUN: enable ARMED in settings to write to devices"
         from . import dante
         try:
             ok = dante.set_aes67_prefix(ip, prefix)
@@ -476,7 +474,7 @@ class Engine:
         return ok, ("device acknowledged" if ok else "no acknowledgement from device")
 
     def create_tx_flow(self, ip, channels, multicast, port=5004):
-        """Create an AES67 multicast TX flow on a device (guarded by ARMED).
+        """Create an AES67 multicast TX flow on a device.
 
         The device announces the flow via SAP, so it appears as an NMOS sender
         through the normal SAP path — no separate registration needed here.
@@ -488,8 +486,6 @@ class Engine:
             _s.inet_aton(multicast)
         except OSError:
             return False, "invalid multicast address"
-        if not self.config["apply_mode"]:
-            return False, "DRY-RUN: enable ARMED in settings to write to devices"
         from . import dante
         try:
             ok = dante.create_tx_flow(ip, channels, multicast, port)
@@ -842,7 +838,7 @@ class Engine:
             self.receivers.refresh_devices()
             any_active = any(s["summary"]["active"]
                              for s in self.receivers.state.values())
-            interval = active if (any_active and self.config["apply_mode"]) else idle
+            interval = active if any_active else idle
             for _ in range(interval * 2):
                 if not self.running:
                     return

@@ -43,9 +43,7 @@ async function refresh() {
   }
   $("sap-chip").textContent = "SAP: " + state.sap_packets;
 
-  const dante = state.dante || { receivers: [], devices: [], apply_mode: false };
-  setChip($("apply-chip"), dante.apply_mode ? "err" : "warn",
-    dante.apply_mode ? "ARMED" : "DRY-RUN");
+  const dante = state.dante || { receivers: [], devices: [] };
 
   $("devices-updated").textContent = dante.devices_updated
     ? "last scan: " + ago(dante.devices_updated) : "";
@@ -127,15 +125,11 @@ function deviceCard(d, senders, receivers) {
   const card = document.createElement("div");
   card.className = "device-card";
   const rate = d.sample_rate ? (d.sample_rate / 1000) + " kHz" : "";
-  const autoBtn = `<button class="icon ${d.auto_prefix ? "on" : ""}"
-      data-autopfx="${esc(d.ip)}" data-autoval="${d.auto_prefix ? 1 : 0}"
-      title="Auto: follow the patched multicast's prefix on NMOS connect">
-      Auto${d.auto_prefix ? " ✓" : ""}</button>`;
   const prefix = d.mcast_prefix
     ? `<span class="mono">239.${d.mcast_prefix}.x.x</span>
        <button class="icon" data-prefix="${esc(d.ip)}" data-pfxval="${d.mcast_prefix}"
-         title="Set AES67 multicast prefix">edit</button> ${autoBtn}`
-    : autoBtn;
+         title="Set AES67 multicast prefix">edit</button>`
+    : "";
 
   const txRows = senders.length
     ? `<table><tbody>${senders.map((s) => senderRow(s, false)).join("")}</tbody></table>`
@@ -398,7 +392,6 @@ $("btn-settings").onclick = async () => {
   $("cfg-dnsdomain").value = cfg.dns_sd_domain || "";
   $("cfg-dnsns").value = cfg.dns_sd_nameserver || "";
   $("cfg-autoreg").checked = !!cfg.auto_registrar;
-  $("cfg-apply").checked = !!cfg.apply_mode;
   $("discover-results").innerHTML = "";
   $("cfg-group").value = cfg.sap_group;
   $("cfg-sapport").value = cfg.sap_port;
@@ -419,7 +412,6 @@ $("btn-settings-save").onclick = async () => {
     sap_port: parseInt($("cfg-sapport").value, 10) || 9875,
     stream_timeout: parseInt($("cfg-timeout").value, 10) || 120,
     http_port: parseInt($("cfg-httpport").value, 10) || 8085,
-    apply_mode: $("cfg-apply").checked,
     registry_recheck_interval: parseInt($("cfg-recheck").value, 10) || 300,
   };
   const r = await fetch("/api/config", {
@@ -507,12 +499,6 @@ async function handleAction(e) {
   } else if (d.devdel) {
     if (!confirm(`Remove manually added device ${d.devdel}?`)) return;
     await fetch("/api/devices/manual/" + d.devdel, { method: "DELETE" });
-    refresh();
-  } else if (d.autopfx) {
-    await fetch("/api/devices/auto_prefix", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip: d.autopfx, enabled: d.autoval !== "1" }),
-    });
     refresh();
   } else if (d.prefix) {
     const val = prompt(`AES67 multicast prefix for ${d.prefix}\n` +

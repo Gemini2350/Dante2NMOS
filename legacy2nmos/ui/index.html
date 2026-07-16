@@ -15,7 +15,6 @@
   <div class="header-status">
     <span id="registry-chip" class="chip">registry</span>
     <span id="sap-chip" class="chip neutral" title="SAP packets received">SAP: 0</span>
-    <span id="apply-chip" class="chip warn" title="Whether real Dante commands are sent">DRY-RUN</span>
   </div>
   <div class="header-actions">
     <button id="btn-settings">Settings</button>
@@ -156,8 +155,8 @@
     <h2>Create multicast TX flow</h2>
     <p class="hint">Creates an AES67 multicast flow on <b id="tx-devname"></b> that
     transmits the selected TX channels. The device announces it via SAP, so it
-    shows up as an NMOS sender. Requires <b>ARMED</b> mode. The multicast must be
-    in the device's AES67 range (239.&lt;prefix&gt;.x.x).</p>
+    shows up as an NMOS sender. The multicast must be in the device's AES67
+    range (239.&lt;prefix&gt;.x.x).</p>
     <div class="grid2">
       <label>TX channel 1
         <input type="number" id="tx-ch1" value="1" min="1">
@@ -221,10 +220,6 @@
         <input type="number" id="cfg-recheck">
       </label>
     </div>
-    <label class="checkline danger">
-      <input type="checkbox" id="cfg-apply">
-      <b>ARMED:</b> send real Dante commands on IS-05 activation (default: DRY-RUN)
-    </label>
     <div class="error" id="settings-error"></div>
     <div class="modal-actions">
       <button class="secondary" data-close>Cancel</button>
