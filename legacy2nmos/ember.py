@@ -304,6 +304,69 @@ def qualified_getdirectory(path: str) -> bytes:
     return _enc_tlv(APPLICATION | CONSTRUCTED | G_ROOT_ELEMENT_COLLECTION, element)
 
 
+G_INVOCATION = 22
+G_INVOCATION_RESULT = 23
+
+
+def enc_invocation(args) -> bytes:
+    """Invocation ::= [APP 22] SEQ { arguments [1] SEQ OF value }.
+
+    args: list of (value, universal_tag) pairs.
+    """
+    seq = bytearray()
+    for value, tag in args:
+        seq += _enc_tlv(CONTEXT | CONSTRUCTED | 0, _enc_tlv(tag, _encode_scalar(value, tag)))
+    inner = enc_context(1, _enc_tlv(U_SEQ | CONSTRUCTED, bytes(seq)))
+    return _enc_tlv(APPLICATION | CONSTRUCTED | G_INVOCATION, inner)
+
+
+def cmd_invoke(args) -> bytes:
+    inner = enc_int_value(0, 33)                 # number = Invoke
+    inner += enc_context(2, enc_invocation(args))
+    return _enc_tlv(APPLICATION | CONSTRUCTED | G_COMMAND, inner)
+
+
+def qualified_invoke(path: str, args) -> bytes:
+    """Invoke a function at `path` with `args` (list of (value, tag))."""
+    children = _enc_tlv(APPLICATION | CONSTRUCTED | G_ELEMENT_COLLECTION,
+                        _enc_tlv(CONTEXT | CONSTRUCTED | 0, cmd_invoke(args)))
+    qf_inner = enc_context(0, _enc_tlv(U_RELOID, enc_reloid(path))) \
+        + enc_context(2, children)
+    qf = _enc_tlv(APPLICATION | CONSTRUCTED | G_QUALIFIED_FUNCTION, bytes(qf_inner))
+    element = _enc_tlv(CONTEXT | CONSTRUCTED | 0, qf)
+    return _enc_tlv(APPLICATION | CONSTRUCTED | G_ROOT_ELEMENT_COLLECTION, element)
+
+
+def parse_invocation_result(payload: bytes):
+    """Return (success: bool, values: list) from an InvocationResult, or None."""
+    for cls, cons, num, val in ber_parse(payload):
+        if cls == APPLICATION and num == G_ROOT_ELEMENT_COLLECTION:
+            r = parse_invocation_result(val)
+            if r is not None:
+                return r
+        elif cls == CONTEXT and cons:
+            r = parse_invocation_result(val)
+            if r is not None:
+                return r
+        elif cls == APPLICATION and num == G_INVOCATION_RESULT:
+            success, values = False, []
+            for c2, cc2, n2, v2 in ber_parse(val):
+                if c2 == CONTEXT and n2 == 1:
+                    inner = ber_parse(v2)
+                    if inner:
+                        success = bool(inner[0][3] and inner[0][3][0])
+                elif c2 == CONTEXT and n2 == 2:  # result SEQ OF value
+                    for c3, cc3, n3, v3 in ber_parse(v2):        # the SEQUENCE
+                        for c4, cc4, n4, v4 in ber_parse(v3):    # each element
+                            if c4 == CONTEXT:                    # [0]-wrapped value
+                                for c5, cc5, n5, v5 in ber_parse(v4):
+                                    values.append(dec_value(n5, v5))
+                            else:                                # direct typed value
+                                values.append(dec_value(n4, v4))
+            return success, values
+    return None
+
+
 def qualified_set_parameter(path: str, value, value_tag: int) -> bytes:
     """Set a QualifiedParameter's value at `path`."""
     contents = enc_context(1, _enc_tlv(value_tag, _encode_scalar(value, value_tag)))
@@ -393,6 +456,16 @@ class EmberClient:
     def set_parameter(self, path: str, value, value_tag: int = U_INT):
         self._send(qualified_set_parameter(path, value, value_tag))
         self._recv_payloads(deadline_reads=4)  # drain the acknowledgement
+
+    def invoke(self, path: str, args):
+        """Invoke an Ember+ function. args: list of (value, universal_tag).
+        Returns (success, result_values)."""
+        self._send(qualified_invoke(path, args))
+        for payload in self._recv_payloads():
+            r = parse_invocation_result(payload)
+            if r is not None:
+                return r
+        return (False, [])
 
 
 # --- Glow tree parsing ----------------------------------------------------

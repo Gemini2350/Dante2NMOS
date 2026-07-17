@@ -78,3 +78,19 @@ def test_parse_glow_nodes_and_parameters():
     by_id = {e.identifier: e for e in els}
     assert by_id["core"].kind == "node" and by_id["core"].path == "1"
     assert by_id["gain"].kind == "parameter" and by_id["gain"].value == 42
+
+
+def test_invoke_encoding_and_result_roundtrip():
+    # Encode an invoke on path "1.2.3" with args (str "strm0", int 2)
+    req = ember.qualified_invoke("1.2.3", [("strm0", U_UTF8), (2, U_INT)])
+    assert req[0] == (APPLICATION | CONSTRUCTED | G_ROOT_ELEMENT_COLLECTION)
+
+    # Build an InvocationResult(success=True, result=["ok"]) and parse it back.
+    res_seq = _enc_tlv(CONTEXT | CONSTRUCTED | 0, _enc_tlv(U_UTF8, b"ok"))
+    ir_inner = enc_context(1, _enc_tlv(1, b"\xff")) \
+        + enc_context(2, _enc_tlv(16 | CONSTRUCTED, res_seq))
+    ir = _enc_tlv(APPLICATION | CONSTRUCTED | 23, ir_inner)
+    root = _enc_tlv(APPLICATION | CONSTRUCTED | G_ROOT_ELEMENT_COLLECTION,
+                    _enc_tlv(CONTEXT | CONSTRUCTED | 0, ir))
+    success, values = ember.parse_invocation_result(root)
+    assert success is True and values == ["ok"]

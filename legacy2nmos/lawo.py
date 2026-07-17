@@ -80,6 +80,69 @@ class LawoManager:
             c.set_parameter(path, value, tag)
         self.log(f"Lawo set {host}:{port} {path} = {value!r}")
 
+    # ------------------------------------------------------------- A__line ops
+    # Documented Ember+ API (A__line User Guide v1.8, ch. 9). Functions live
+    # under /ravenna/routing/functions; paths are resolved by identifier so we
+    # don't depend on numeric OIDs (which vary per device).
+
+    _FUNC_BASE = ("ravenna", "routing", "functions")
+
+    def _resolve(self, client, names):
+        """Resolve a path of identifiers to a dotted numeric Ember+ path."""
+        path = None
+        for name in names:
+            children = client.get_directory(path)
+            match = next((e for e in children if e.identifier == name), None)
+            if match is None:
+                raise ember.EmberError(f"Ember+ node '{name}' not found under "
+                                       f"{path or 'root'}")
+            path = match.path
+        return path
+
+    def _invoke_func(self, host, port, func_name, args):
+        with ember.EmberClient(host, int(port), timeout=4.0) as c:
+            fpath = self._resolve(c, self._FUNC_BASE + (func_name,))
+            success, result = c.invoke(fpath, args)
+        return success, result
+
+    S = ember.U_UTF8
+    I = ember.U_INT
+    B = ember.U_BOOL
+
+    def create_input_stream(self, host, port, interface, stream_id,
+                            delay=32, syntonized=False):
+        return self._invoke_func(host, port, "createInputStream",
+                                 [(interface, self.S), (stream_id, self.S),
+                                  (delay, self.I), (syntonized, self.B)])
+
+    def set_input_sdp(self, host, port, interface, stream_id, sdp):
+        """Subscribe an existing Rx stream to a source by SDP (IS-05 activate)."""
+        with ember.EmberClient(host, int(port), timeout=4.0) as c:
+            path = self._resolve(c, ("ravenna", "routing", "inputs", interface,
+                                     "streams", stream_id, "sourceSDP"))
+            c.set_parameter(path, sdp, ember.U_UTF8)
+
+    def create_output_stream(self, host, port, interface, stream_id, channels):
+        return self._invoke_func(host, port, "createOutputStream",
+                                 [(interface, self.S), (stream_id, self.S),
+                                  (int(channels), self.I)])
+
+    def create_output_sender(self, host, port, interface, stream_id, sender_id,
+                             multicast, rtp_port=5004, codec=1, frame_size=48,
+                             ttl=15):
+        # codec: 0=L16, 1=L24, 2=L32, 3=AM824
+        return self._invoke_func(host, port, "createOutputStreamSender",
+                                 [(interface, self.S), (stream_id, self.S),
+                                  (sender_id, self.S), (multicast, self.S),
+                                  (int(rtp_port), self.I), (True, self.B),
+                                  ("", self.S), (0, self.I), (False, self.B),
+                                  (0, self.I), (int(codec), self.I),
+                                  (int(frame_size), self.I), (int(ttl), self.I)])
+
+    def connect_channel(self, host, port, output_path, input_path):
+        return self._invoke_func(host, port, "connectChannel",
+                                 [(output_path, self.S), (input_path, self.S)])
+
     # ------------------------------------------------------------- UI data
 
     def as_api(self):
