@@ -33,6 +33,7 @@ def _fresh_state():
         "last_ack": None,        # True/False: did the device ACK the commands
         "last_activation": 0,
         "stream_health": "none",  # 'connected' | 'no_audio' | 'none'
+        "rx_status_codes": [],     # raw per-channel Dante subscription codes
     }
 
 
@@ -279,6 +280,7 @@ class ReceiverManager:
                 dev = by_ip.get(rx.dante_device_ip)
                 if dev is None:
                     health = "unknown"
+                    codes = []
                 else:
                     codes = [dev.rx_status.get(rx.dante_base_channel + i)
                              for i in range(rx.channels)]
@@ -291,12 +293,15 @@ class ReceiverManager:
                         health = "no_audio"  # some channels missing audio
                     else:
                         health = "none"
+                # Keep the raw per-channel status codes for the UI / calibration
+                # — a "stuck no_audio" is then one glance away from the real code.
+                state["rx_status_codes"] = codes
                 if health != state["stream_health"]:
                     state["stream_health"] = health
-                    changed.append(rid)
-        for rid in changed:
+                    changed.append((rid, codes))
+        for rid, codes in changed:
             self.log(f"RTP flow health for {self.receivers[rid].label}: "
-                     f"{self.state[rid]['stream_health']}")
+                     f"{self.state[rid]['stream_health']} (Dante codes {codes})")
             self._notify_status(rid)
 
     def stream_health(self, nmos_id):
@@ -331,6 +336,7 @@ class ReceiverManager:
                     "source": s["summary"]["source"],
                     "sender_id": s["summary"].get("sender_id"),
                     "stream_health": s["stream_health"],
+                    "rx_status_codes": s.get("rx_status_codes", []),
                     "last_ack": s["last_ack"],
                     "last_activation": s["last_activation"],
                     "last_result": s["last_result"],

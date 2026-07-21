@@ -207,7 +207,9 @@ function receiverRow(r) {
     const fmap = { connected: ["reg", "audio"], no_audio: ["stale", "NO AUDIO"],
       none: ["stale", "no flow"], unknown: ["pending", "polling…"] };
     const [cls, label] = fmap[r.stream_health] || fmap.unknown;
-    flow = badge(cls, label);
+    const codes = (r.rx_status_codes || []).join(",");
+    flow = `<span title="Dante subscription codes: ${codes || "?"} `
+      + `(10=audio, 14=no audio, 0=none)">${badge(cls, label)}</span>`;
   }
   const sender = r.sender_id
     ? `<div class="sub mono" title="connected sender">← ${esc(r.sender_id)}</div>` : "";
