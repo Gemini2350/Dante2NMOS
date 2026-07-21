@@ -154,7 +154,9 @@ class Engine:
     def state(self):
         with self.lock:
             streams = sorted(self.streams.values(), key=lambda s: (s["name"] or "").lower())
+            from . import __version__
             return {
+                "version": __version__,
                 "running": self.running,
                 "registry_ok": self.registry_ok,
                 "registry_error": self.registry_error,
