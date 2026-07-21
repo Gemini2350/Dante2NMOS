@@ -190,6 +190,8 @@ function senderRow(s, showSrc) {
     <td>${status}</td>
     <td data-ts="${s.last_seen}">${ago(s.last_seen)}</td>
     <td class="row-actions">
+      <button class="icon" data-rename="${s.hash}" data-rnval="${esc(s.name)}"
+        title="Set the NMOS name">name</button>
       <button class="icon" data-sdp="${s.hash}" title="View SDP">SDP</button>
       <button class="icon" data-del="${s.hash}" title="Remove stream">&#10005;</button>
     </td></tr>`;
@@ -493,6 +495,7 @@ function openCreateTx(ip, name) {
   $("tx-ch1").value = 1;
   $("tx-ch2").value = 2;
   $("tx-port").value = 5004;
+  $("tx-name").value = "";
   // prefill multicast from the device's prefix if known
   const dev = (window._lastDevices || []).find((x) => x.ip === ip);
   $("tx-mcast").value = dev && dev.mcast_prefix
@@ -511,6 +514,7 @@ $("btn-tx-confirm").onclick = async () => {
     channels,
     multicast: $("tx-mcast").value.trim(),
     port: parseInt($("tx-port").value, 10) || 5004,
+    name: $("tx-name").value.trim(),
   };
   const r = await fetch("/api/devices/tx", {
     method: "POST",
@@ -625,6 +629,15 @@ async function handleAction(e) {
     $("sdp-view-title").textContent = "SDP";
     $("sdp-view").textContent = await r.text();
     openModal("modal-sdp");
+  } else if (d.rename) {
+    const val = prompt("NMOS name for this sender\n" +
+      "(empty = use the device's own name)", d.rnval || "");
+    if (val === null) return;
+    await fetch("/api/stream/" + d.rename + "/name", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: val.trim() }),
+    });
+    refresh();
   } else if (d.del) {
     if (!confirm("Remove this stream (and unregister it from the registry)?")) return;
     await fetch("/api/stream/" + d.del, { method: "DELETE" });

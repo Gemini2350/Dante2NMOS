@@ -160,13 +160,19 @@ def make_server(engine, config):
                     ok, msg = engine.set_device_prefix(ip, prefix)
                     return self.send_json({"ok": ok, "message": msg},
                                           200 if ok else 400)
+                if path.startswith("/api/stream/") and path.endswith("/name"):
+                    h = path[len("/api/stream/"):-len("/name")]
+                    body = json.loads(self.read_body() or b"{}")
+                    ok = engine.set_stream_name(h, body.get("name") or "")
+                    return self.send_json({"ok": ok}, 200 if ok else 404)
                 if path == "/api/devices/tx":
                     body = json.loads(self.read_body() or b"{}")
                     ip = (body.get("ip") or "").strip()
                     channels = [int(c) for c in (body.get("channels") or [])]
                     multicast = (body.get("multicast") or "").strip()
                     port = int(body.get("port") or 5004)
-                    ok, msg = engine.create_tx_flow(ip, channels, multicast, port)
+                    name = (body.get("name") or "").strip()
+                    ok, msg = engine.create_tx_flow(ip, channels, multicast, port, name)
                     return self.send_json({"ok": ok, "message": msg},
                                           200 if ok else 400)
                 if path == "/api/lawo/device":

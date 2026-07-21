@@ -24,6 +24,7 @@ DEFAULTS = {
     "manual_devices": [],        # device IPs to query by unicast (cross-subnet)
     "lawo_devices": [],          # Lawo devices controlled over Ember+
     "cymatic_devices": [],       # Cymatic/Archwave devices (HTTP+JSON)
+    "flow_names": {},            # "mcast:port" -> custom NMOS label (survives SAP)
 }
 
 

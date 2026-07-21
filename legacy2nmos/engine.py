@@ -189,6 +189,52 @@ class Engine:
                 self.config.save()
         return h
 
+    def _flow_key(self, mcast, port):
+        return f"{mcast}:{port if port is not None else ''}"
+
+    def _flow_name(self, mcast, port):
+        if not mcast:
+            return ""
+        return self.config["flow_names"].get(self._flow_key(mcast, port), "")
+
+    def set_stream_name(self, h, name):
+        """Assign (or clear) the NMOS label of a stream. Stored per multicast:port
+        so it persists across restarts and survives SAP re-announcements, then
+        the sender is re-registered with the new label."""
+        name = (name or "").strip()
+        with self.lock:
+            s = self.streams.get(h)
+        if not s:
+            return False
+        key = self._flow_key(s["mcast"], s["port"])
+        with self.lock:
+            if name:
+                self.config["flow_names"][key] = name
+            else:
+                self.config["flow_names"].pop(key, None)
+            self.config.save()
+            s["name"] = name or parse_sdp(s["sdp"]).get("name", "")
+        self._reregister_labels(s)
+        self._log(f"Renamed {s['mcast']} -> {s['name'] or '(default)'}")
+        return True
+
+    def _reregister_labels(self, stream):
+        """Re-POST source/flow/sender for an already-registered stream so a label
+        change reaches the registry, keeping the existing resource ids."""
+        if not (self._registrar() and stream.get("sender_id") and not stream["external"]):
+            return
+        sid, fid, seid = stream["source_id"], stream["flow_id"], stream["sender_id"]
+        source = {**self._build_source(sid, stream), "id": sid}
+        flow = {**self._build_flow(fid, sid, stream), "id": fid, "source_id": sid}
+        sender = {**self._build_sender(seid, fid, stream), "id": seid, "flow_id": fid}
+        with self.lock:
+            self._sources[sid] = source
+            self._flows[fid] = flow
+            self._senders[seid] = sender
+        self._post("source", source)
+        self._post("flow", flow)
+        self._post("sender", sender)
+
     def remove_stream(self, h, suppress=False):
         with self.lock:
             s = self.streams.pop(h, None)
@@ -408,7 +454,10 @@ class Engine:
             "hash": h,
             "sdp": sdp,
             "origin": origin,
-            "name": parsed.get("name", ""),
+            # A user-assigned name (per multicast:port) wins over the SDP session
+            # name, so it survives a SAP announcement superseding a created flow.
+            "name": self._flow_name(parsed.get("ip", ""), parsed.get("port"))
+                    or parsed.get("name", ""),
             "mcast": parsed.get("ip", ""),
             "port": parsed.get("port"),
             "src_ip": parsed.get("src_ip", ""),
@@ -564,9 +613,11 @@ class Engine:
         threading.Thread(target=self.receivers.refresh_devices, daemon=True).start()
         return ok, ("device acknowledged" if ok else "no acknowledgement from device")
 
-    def create_tx_flow(self, ip, channels, multicast, port=5004):
+    def create_tx_flow(self, ip, channels, multicast, port=5004, name=""):
         """Create a multicast TX flow on a Dante device and register it as an
-        NMOS sender directly from the device's ARC acknowledgement (no SAP)."""
+        NMOS sender directly from the device's ARC acknowledgement (no SAP).
+        An optional `name` becomes the sender's NMOS label (persisted per
+        multicast:port, so it also survives the later SAP announcement)."""
         if not channels or len(channels) > 2:
             return False, "select 1 or 2 channels"
         try:
@@ -589,6 +640,11 @@ class Engine:
         # straight away, no waiting for a SAP announcement. Lift any tombstone
         # from a prior delete of the same multicast so it shows again.
         self.suppressed.discard((multicast, port))
+        name = (name or "").strip()
+        if name:
+            with self.lock:
+                self.config["flow_names"][self._flow_key(multicast, port)] = name
+                self.config.save()
         sdp = self._dante_tx_sdp(ip, multicast, port, len(channels))
         self._ingest(sdp, origin="dante-tx")
         return True, f"created ({variant} flow) and registered as an NMOS sender"
